@@ -1,0 +1,2 @@
+# name version SHA-256 upstream-URL; hash also published by FreeBSD ports.
+pkg 2.8.4 b7b71b1d11c8c021bab41e064778c0f8184c41eb4ced91b0951acfdc0538da47 https://github.com/freebsd/pkg/archive/refs/tags/2.8.4.tar.gz

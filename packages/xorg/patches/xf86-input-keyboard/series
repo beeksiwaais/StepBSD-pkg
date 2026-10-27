@@ -1,0 +1,4 @@
+patch-at_scancode.c
+patch-src__bsd_KbdMap.c
+patch-src__bsd_kbd.c
+patch-src__kbd.c

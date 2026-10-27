@@ -1,0 +1,106 @@
+name: StepBSD source packages
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -m unittest discover -s tests -v
+  build:
+    needs: sources
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            vm_arch: x86_64
+          - arch: arm64
+            vm_arch: aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build from sources and exercise the installed packages
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: '15.1'
+          arch: ${{ matrix.vm_arch }}
+          mem: 8192
+          cpu: 4
+          usesh: true
+          sync: rsync
+          copyback: true
+          prepare: |
+            pkg install -y git rsync python3 meson ninja pkgconf autoconf automake libtool xorg-macros gmake
+          run: |
+            set -eu
+            export WORKDIR=/var/tmp/stepbsd-pkg
+            sh scripts/build.sh out
+            TEST_WORKDIR=/var/tmp/stepbsd-pkg-install-test sh scripts/install-test.sh out
+            mkdir -p test-logs
+            cp /var/tmp/stepbsd-pkg-install-test/*.log test-logs/
+            rm -rf /var/tmp/stepbsd-pkg /var/tmp/stepbsd-pkg-install-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-packages-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: package-test-${{ matrix.arch }}
+          path: test-logs/
+          if-no-files-found: ignore
+  publish:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: source-packages-*
+          path: packages/
+      - name: Sign and verify release repositories
+        uses: vmactions/freebsd-vm@v1
+        env:
+          STEPBSD_REPO_SIGNING_KEY: ${{ secrets.STEPBSD_REPO_SIGNING_KEY }}
+        with:
+          release: '15.1'
+          envs: STEPBSD_REPO_SIGNING_KEY
+          usesh: true
+          sync: rsync
+          copyback: true
+          prepare: pkg install -y rsync
+          run: |
+            set -eu
+            test -n "$STEPBSD_REPO_SIGNING_KEY"
+            key=$(mktemp)
+            chmod 600 "$key"
+            trap 'rm -f "$key"' EXIT INT TERM
+            printf '%s\n' "$STEPBSD_REPO_SIGNING_KEY" > "$key"
+            for arch in amd64 arm64; do
+              REPO_SIGNING_KEY="$key" sh scripts/sign-repository.sh "packages/source-packages-$arch"
+              sh scripts/check-repository.sh "packages/source-packages-$arch" "$arch"
+            done
+      - name: Publish signed package snapshots
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          for arch in amd64 arm64; do
+            tag=packages-$arch
+            gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --prerelease --title "StepBSD source packages ($arch)" --notes 'Source-built X.Org and StepBSD pkg. Repository metadata and bootstrap packages are signed.'
+            gh release upload "$tag" packages/source-packages-$arch/* --clobber
+          done

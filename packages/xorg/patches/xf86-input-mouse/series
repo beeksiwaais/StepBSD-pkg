@@ -1,0 +1,5 @@
+patch-src-bsd_mouse.c
+patch-src_Makefile.in
+patch-src_mouse.c
+patch-src_mouse.h
+patch-src_mousePriv.h

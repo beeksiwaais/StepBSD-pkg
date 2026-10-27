@@ -1,0 +1,6 @@
+NextBSD-freebsd-compat
+NextBSD-userland
+NextBSD-displayserver-support
+NextBSD-xlibs
+NextBSD-mesa
+NextBSD-mesa-x11

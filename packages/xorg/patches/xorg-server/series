@@ -1,0 +1,10 @@
+patch-config_udev.c
+patch-hw_xfree86_common_xf86AutoConfig.c
+patch-hw_xfree86_common_xf86str.h
+patch-hw_xfree86_meson.build
+patch-hw_xfree86_os-support_bsd_bsd__init.c
+patch-hw_xfree86_os-support_meson.build
+patch-include_meson.build
+patch-os-utils.c
+patch-xkb_ddxLoad.c
+stepbsd-dri-driver-path.patch

@@ -1,0 +1,33 @@
+Description: Keep the installed DRI driver path independent of the build sysroot.
+ pkgconf prefixes dridriverdir with the sysroot during a cross build. Expose
+ the installed driver directory separately so the server does not embed a
+ path that exists only on the build machine.
+Origin: StepBSD
+Forwarded: not-yet
+
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -21,6 +21,8 @@
+ option('module_dir', type: 'string', value: 'xorg/modules',
+        description: 'X.Org modules directory (absolute or relative to the directory specified by the libdir option)')
+ option('default_font_path', type: 'string')
++option('dri_driver_path', type: 'string', value: '',
++       description: 'Installed DRI driver directory (independent of the build sysroot)')
+ 
+ option('glx', type: 'boolean', value: true)
+ option('xdmcp', type: 'boolean', value: true)
+--- a/include/meson.build
++++ b/include/meson.build
+@@ -214,7 +214,11 @@
+ conf_data.set('DRI2', build_dri2 ? '1' : false)
+ conf_data.set('DRI3', build_dri3 ? '1' : false)
+ if build_glx
+-    conf_data.set_quoted('DRI_DRIVER_PATH', dri_dep.get_pkgconfig_variable('dridriverdir'))
++    installed_dri_path = get_option('dri_driver_path')
++    if installed_dri_path == ''
++        installed_dri_path = dri_dep.get_pkgconfig_variable('dridriverdir')
++    endif
++    conf_data.set_quoted('DRI_DRIVER_PATH', installed_dri_path)
+ endif
+ conf_data.set('HAS_SHM', build_mitshm ? '1' : false)
+ conf_data.set('MITSHM', build_mitshm ? '1' : false)

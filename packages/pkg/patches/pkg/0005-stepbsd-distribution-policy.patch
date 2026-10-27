@@ -1,0 +1,121 @@
+Description: Recognize StepBSD as a distribution and reserve pkg updates to it.
+ Keep NextBSD trusted for base dependencies. StepBSD repository packages and
+ annotated local package files may install base paths; foreign packages retain
+ NextBSD's /usr/local and /var restriction. Only StepBSD may supply pkg updates.
+Origin: StepBSD
+Forwarded: not-needed (distribution policy)
+
+--- a/libpkg/pkg_jobs_universe.c
++++ b/libpkg/pkg_jobs_universe.c
+@@ -117,7 +117,7 @@
+  * dependency resolution, nor a shlib or provide lookup.  The repository name
+  * is fixed.  Local packages and package files (pkg add) are not affected.
+  */
+-#define	NEXTBSD_PKG_REPO	"NextBSD"
++#define	NEXTBSD_PKG_REPO	"StepBSD"
+ 
+ static bool
+ nextbsd_foreign_pkg(const struct pkg *pkg)
+@@ -128,7 +128,7 @@
+ 		return (false);
+ 	if (pkg->reponame != NULL && STREQ(pkg->reponame, NEXTBSD_PKG_REPO))
+ 		return (false);
+-	dbg(1, "NextBSD: ignoring %s-%s from repository %s: "
++	dbg(1, "StepBSD: ignoring %s-%s from repository %s: "
+ 	    "pkg comes only from the " NEXTBSD_PKG_REPO " repository",
+ 	    pkg->name, pkg->version,
+ 	    pkg->reponame != NULL ? pkg->reponame : "(none)");
+--- a/libpkg/private/nextbsd_policy.h
++++ b/libpkg/private/nextbsd_policy.h
+@@ -17,7 +17,7 @@
+ struct pkgdb;
+ struct pkg_jobs;
+ 
+-#define	NEXTBSD_PKG_REPO	"NextBSD"
++#define	NEXTBSD_PKG_REPO	"StepBSD"
+ #define	NEXTBSD_ORIGIN_KEY	"org.nextbsd.origin"
+ #define	NEXTBSD_ORIGIN_VALUE	"NextBSD"
+ 
+--- a/libpkg/nextbsd_policy.c
++++ b/libpkg/nextbsd_policy.c
+@@ -24,9 +24,9 @@
+  * A package arrives either from a repository (source is the remote package,
+  * PKG_REMOTE, whose reponame says which) or from a local package file (pkg
+  * add, or pkg install ./file: no source, or a PKG_FILE source). A package
+- * file is a NextBSD package when its manifest carries the annotation
+- * org.nextbsd.origin=NextBSD, which nextbsd-pkg stamps on every package it
+- * builds.
++ * file is trusted when it carries org.stepbsd.origin=StepBSD or
++ * org.nextbsd.origin=NextBSD. Repository signatures authenticate downloaded
++ * packages; these annotations identify explicitly installed local files.
+  */
+ static bool
+ nextbsd_from_repo(const struct pkg *source)
+@@ -41,9 +41,13 @@
+ 
+ 	if (nextbsd_from_repo(source))
+ 		return (source->reponame != NULL &&
+-		    STREQ(source->reponame, NEXTBSD_PKG_REPO));
++		    (STREQ(source->reponame, "NextBSD") ||
++		     STREQ(source->reponame, "StepBSD")));
+ 	v = pkg_kv_get(&pkg->annotations, NEXTBSD_ORIGIN_KEY);
+-	return (v != NULL && STREQ(v, NEXTBSD_ORIGIN_VALUE));
++	if (v != NULL && STREQ(v, NEXTBSD_ORIGIN_VALUE))
++		return (true);
++	v = pkg_kv_get(&pkg->annotations, "org.stepbsd.origin");
++	return (v != NULL && STREQ(v, "StepBSD"));
+ }
+ 
+ int
+@@ -52,16 +56,17 @@
+ 	bool trusted = nextbsd_trusted(pkg, source);
+ 
+ 	/*
+-	 * pkg itself comes only from NextBSD: from the NextBSD repository (the
+-	 * universe filter sees to that) or from a package file that is a
+-	 * NextBSD package.
++	 * pkg itself comes only from StepBSD: the universe filter checks remote
++	 * candidates; explicitly installed local files need our origin marker.
+ 	 */
+-	if (!trusted && !nextbsd_from_repo(source) &&
+-	    (STREQ(pkg->name, "pkg") || STREQ(pkg->name, "pkg-devel"))) {
+-		pkg_emit_error("NextBSD: refusing to install %s-%s from a "
+-		    "package file that is not a NextBSD package (no "
+-		    NEXTBSD_ORIGIN_KEY "=" NEXTBSD_ORIGIN_VALUE " annotation): "
+-		    "pkg comes only from NextBSD",
++	const char *origin = pkg_kv_get(&pkg->annotations, "org.stepbsd.origin");
++	if (!nextbsd_from_repo(source) &&
++	    (STREQ(pkg->name, "pkg") || STREQ(pkg->name, "pkg-devel")) &&
++	    (origin == NULL || !STREQ(origin, "StepBSD"))) {
++		pkg_emit_error("StepBSD: refusing to install %s-%s from a "
++		    "package file that is not a StepBSD package (no "
++		    "org.stepbsd.origin=StepBSD annotation): "
++		    "pkg comes only from StepBSD",
+ 		    pkg->name, pkg->version);
+ 		return (EPKG_FATAL);
+ 	}
+@@ -85,19 +90,18 @@
+ 		}
+ 		if (bad != NULL) {
+ 			if (nextbsd_from_repo(source))
+-				pkg_emit_error("NextBSD: refusing to install "
++				pkg_emit_error("StepBSD: refusing to install "
+ 				    "%s-%s from repository %s: it installs %s; "
+-				    "packages not from the NextBSD repository may "
++				    "packages not from the StepBSD or NextBSD repositories may "
+ 				    "only install under " NEXTBSD_SIP_ALLOWED_TEXT,
+ 				    pkg->name, pkg->version,
+ 				    source->reponame != NULL ? source->reponame : "(unknown)",
+ 				    bad);
+ 			else
+-				pkg_emit_error("NextBSD: refusing to install "
++				pkg_emit_error("StepBSD: refusing to install "
+ 				    "%s-%s from a package file: it installs %s; "
+-				    "package files without the "
+-				    NEXTBSD_ORIGIN_KEY "=" NEXTBSD_ORIGIN_VALUE
+-				    " annotation may only install under "
++				    "package files without a StepBSD or NextBSD origin "
++				    "annotation may only install under "
+ 				    NEXTBSD_SIP_ALLOWED_TEXT,
+ 				    pkg->name, pkg->version, bad);
+ 			return (EPKG_FATAL);

@@ -92,7 +92,11 @@ CROSS
     install -m 0444 "$TOP/NOTICE.md" "$STAGE/usr/share/licenses/$RECIPE/StepBSD-pkg-NOTICE.md"
     cp "$TOP/packages/$RECIPE/sources.lock" "$STAGE/usr/share/stepbsd/packages/$RECIPE/"
     pkg -r "$SYSROOT" query '%n %v' > "$STAGE/usr/share/stepbsd/packages/$RECIPE/build-dependencies.txt"
-    git -C "$TOP" rev-parse HEAD > "$STAGE/usr/share/stepbsd/packages/$RECIPE/recipe-commit" 2>/dev/null || echo uncommitted > "$STAGE/usr/share/stepbsd/packages/$RECIPE/recipe-commit"
+    # VM sync can preserve the checkout's host UID. Trust only this explicit
+    # checkout for this command; do not change Git's global safety settings.
+    recipe_commit=$(git -c safe.directory="$TOP" -C "$TOP" rev-parse HEAD) ||
+        die "build from a StepBSD-pkg Git checkout so package provenance is recorded"
+    printf '%s\n' "$recipe_commit" > "$STAGE/usr/share/stepbsd/packages/$RECIPE/recipe-commit"
     cat > "$WORK/manifest" <<MANIFEST
 name: "$name"
 origin: "stepbsd/$RECIPE"

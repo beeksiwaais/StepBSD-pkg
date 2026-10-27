@@ -41,6 +41,10 @@ P=$R/usr/sbin/pkg-static
 "$P" -r "$R" info -e StepBSD-xorg
 if "$P" -r "$R" info -e NextBSD-xlibre; then echo 'XLibre was installed' >&2; exit 1; fi
 [ "$("$P" -r "$R" query %R pkg)" = StepBSD ]
+expected_commit=$(git -c safe.directory="$TOP" -C "$TOP" rev-parse HEAD)
+for recipe in pkg xorg; do
+    [ "$(cat "$R/usr/share/stepbsd/packages/$recipe/recipe-commit")" = "$expected_commit" ]
+done
 mount -t devfs devfs "$R/dev"
 chroot "$R" /usr/bin/env LD_LIBRARY_PATH=/usr/X11/lib:/usr/lib/system /usr/X11/bin/Xorg -version > "$WORK/Xorg-version.log" 2>&1
 grep -Eq 'X.Org X Server (1\.)?21\.1\.25' "$WORK/Xorg-version.log"
@@ -100,10 +104,10 @@ NextBSD: { url: "file://$WORK/fixture-repo", signature_type: none }
 CONF
 "$P" -r "$R" -R "$WORK/fixture-repos" update -f
 "$P" -r "$R" -R "$WORK/fixture-repos" rquery -r NextBSD '%n %v' pkg | grep -q 'pkg 99'
-if "$P" -r "$R" -R "$WORK/fixture-repos" install -n -r NextBSD pkg > "$WORK/pkg-remote-policy.log" 2>&1; then
-    if grep -q '99' "$WORK/pkg-remote-policy.log"; then
-        echo 'NextBSD repository can replace StepBSD pkg' >&2; exit 1
-    fi
+"$P" -d -r "$R" -R "$WORK/fixture-repos" install -n -r NextBSD pkg > "$WORK/pkg-remote-policy.log" 2>&1 || true
+grep -q 'StepBSD: ignoring pkg-99 from repository NextBSD' "$WORK/pkg-remote-policy.log"
+if grep -Eq '^[[:space:]]+pkg:.*99' "$WORK/pkg-remote-policy.log"; then
+    echo 'NextBSD repository can replace StepBSD pkg' >&2; exit 1
 fi
 [ "$("$P" -r "$R" query %v pkg)" = "$(cat "$TOP/packages/pkg/version")" ]
 echo 'PASS: own pkg installs StepBSD X.Org and NextBSD libraries; Xvfb, XKB, input queries and distribution upgrade policy work'

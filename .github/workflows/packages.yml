@@ -46,6 +46,7 @@ jobs:
             export WORKDIR=/var/tmp/stepbsd-pkg
             sh scripts/build.sh out
             TEST_WORKDIR=/var/tmp/stepbsd-pkg-install-test sh scripts/install-test.sh out
+            sh scripts/test-signing.sh out
             mkdir -p test-logs
             cp /var/tmp/stepbsd-pkg-install-test/*.log test-logs/
             rm -rf /var/tmp/stepbsd-pkg /var/tmp/stepbsd-pkg-install-test
@@ -90,8 +91,9 @@ jobs:
             chmod 600 "$key"
             trap 'rm -f "$key"' EXIT INT TERM
             printf '%s\n' "$STEPBSD_REPO_SIGNING_KEY" > "$key"
+            export STEPBSD_PKG_HOST_REPO="$PWD/packages/source-packages-amd64"
             for arch in amd64 arm64; do
-              REPO_SIGNING_KEY="$key" sh scripts/sign-repository.sh "packages/source-packages-$arch"
+              REPO_SIGNING_KEY="$key" sh scripts/sign-repository.sh "packages/source-packages-$arch" "$arch"
               sh scripts/check-repository.sh "packages/source-packages-$arch" "$arch"
             done
       - name: Publish signed package snapshots

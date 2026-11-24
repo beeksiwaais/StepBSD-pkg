@@ -20,9 +20,14 @@ mkdir -p "$R/private/etc" "$R/private/var" "$R/private/tmp" "$R/dev" "$REPOS"
 for d in etc var tmp; do ln -s "private/$d" "$R/$d"; done
 chmod 1777 "$R/private/tmp"
 arch=$(uname -m)
-case "$arch" in arm64) abiarch=aarch64 ;; *) abiarch=$arch ;; esac
-OSVERSION=$(uname -K)
-export ABI="FreeBSD:15:$abiarch" OSVERSION IGNORE_OSVERSION=yes ASSUME_ALWAYS_YES=yes
+. "$TOP/scripts/pkg-env.sh"
+stepbsd_pkg_target "$arch"
+if [ "${TEST_SIGNED_REPO:-0}" = 1 ]; then
+    set -- "$OUT"/pkg-[0-9]*.pkg
+    [ "$#" -eq 1 ] && [ -f "$1" ]
+    openssl dgst -sha256 -verify "$TOP/keys/StepBSD.pub" -signature "$1.sig" "$1"
+fi
+stepbsd_pkg_from_repository "$OUT" "$WORK"
 cat > "$REPOS/NextBSD.conf" <<CONF
 NextBSD: { url: "https://github.com/nextbsd/nextbsd-pkg/releases/download/continuous-$arch", signature_type: none }
 CONF
@@ -33,8 +38,10 @@ fi
 cat > "$REPOS/StepBSD.conf" <<CONF
 StepBSD: { url: "file://$OUT", $signature, priority: 100 }
 CONF
-pkg -r "$R" -R "$REPOS" update -f
-pkg -r "$R" -R "$REPOS" install -y pkg
+stepbsd_pkg -r "$R" -R "$REPOS" update -f
+# Our policy selects pkg only from StepBSD; dependencies still resolve from
+# both trusted repositories, including NextBSD-freebsd-compat.
+stepbsd_pkg -r "$R" -R "$REPOS" install -y pkg
 P=$R/usr/sbin/pkg-static
 "$P" -r "$R" -R "$REPOS" install -y StepBSD-xorg
 "$P" -r "$R" check -d -s -a
@@ -80,7 +87,7 @@ www: "https://github.com/beeksiwaais/StepBSD-pkg"
 prefix: /
 MANIFEST
 echo /System/stepbsd-policy-probe > "$WORK/fixture-plist"
-pkg create -M "$WORK/fixture-manifest" -p "$WORK/fixture-plist" -r "$WORK/fixture" -o "$WORK/fixture-repo"
+stepbsd_pkg create -M "$WORK/fixture-manifest" -p "$WORK/fixture-plist" -r "$WORK/fixture" -o "$WORK/fixture-repo"
 if "$P" -r "$R" -R "$REPOS" add "$WORK/fixture-repo/StepBSD-policy-probe-1.pkg" > "$WORK/policy.log" 2>&1; then
     echo 'foreign package was allowed into /System' >&2; exit 1
 fi
@@ -90,14 +97,14 @@ grep -q 'may only install under' "$WORK/policy.log"
 sed -e 's/name: StepBSD-policy-probe/name: pkg/' -e 's|origin: test/policy-probe|origin: nextbsd/pkg|' \
     -e 's/version: "1"/version: "99"/' "$WORK/fixture-manifest" > "$WORK/pkg-fixture-manifest"
 echo 'annotations: { "org.nextbsd.origin": "NextBSD" }' >> "$WORK/pkg-fixture-manifest"
-pkg create -M "$WORK/pkg-fixture-manifest" -p "$WORK/fixture-plist" -r "$WORK/fixture" -o "$WORK/fixture-repo"
+stepbsd_pkg create -M "$WORK/pkg-fixture-manifest" -p "$WORK/fixture-plist" -r "$WORK/fixture" -o "$WORK/fixture-repo"
 if "$P" -r "$R" -R "$REPOS" add -f "$WORK/fixture-repo/pkg-99.pkg" > "$WORK/pkg-local-policy.log" 2>&1; then
     echo 'NextBSD package file replaced StepBSD pkg' >&2; exit 1
 fi
 grep -q 'pkg comes only from StepBSD' "$WORK/pkg-local-policy.log"
 # Publish the same higher-version candidate under NextBSD's repository name;
 # ordinary repository jobs must filter it out before planning an upgrade.
-pkg repo "$WORK/fixture-repo"
+stepbsd_pkg repo "$WORK/fixture-repo"
 mkdir -p "$WORK/fixture-repos"
 cat > "$WORK/fixture-repos/NextBSD.conf" <<CONF
 NextBSD: { url: "file://$WORK/fixture-repo", signature_type: none }

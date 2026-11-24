@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """Check package ownership, runtime library closure, and installed search paths."""
 import pathlib
+import os
 import re
 import subprocess
 import sys
 
 stage, sysroot, recipe = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3]
-owned = set(subprocess.check_output(["pkg", "-r", str(sysroot), "query", "%Fp"], text=True).splitlines())
+tool = os.environ.get("STEPBSD_PKG_TOOL")
+config = os.environ.get("STEPBSD_PKG_CONFIG")
+if not tool or not config:
+    raise SystemExit("verify-stage requires the selected ABI-aware package tool and isolated config")
+owned = set(subprocess.check_output([tool, "-C", config, "-r", str(sysroot), "query", "%Fp"], text=True).splitlines())
 providers = {p.name for p in sysroot.rglob("*.so*") if p.is_file()}
 providers.update(p.name for p in stage.rglob("*.so*") if p.is_file())
 errors = []

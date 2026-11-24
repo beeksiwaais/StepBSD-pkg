@@ -14,6 +14,10 @@ licence files in the source archives pinned in `sources.lock`.
 The four initial pkg patches come from NextBSD's nextbsd-contrib repository
 at commit `9cf90068fd4aaa6bd9a1a9bc0277edff43ac78f5`, BSD-2-Clause, copyright
 Joseph Maloney. The X.Org xinit executable-path patches are also NextBSD's.
+The additive NextBSD ABI patch is imported unchanged from nextbsd-contrib's
+`src/pkg/patches/0005-NextBSD-ABI.patch`, Git blob
+`14ab81157eec466b84aae1d2d2cd50611b766362` (2026-10-31), also Origin: NextBSD.
+StepBSD's distribution-policy patch remains in the series independently.
 FreeBSD platform/driver patches retain immutable URLs in their Origin headers.
 The keyboard close-device patch is rebased to the upstream release context;
 its behavior is unchanged. StepBSD's package-manager policy and DRI path

@@ -14,15 +14,16 @@ OUT=$(cd "${1:-$TOP/out}" && pwd)
 . "$TOP/scripts/common.sh"
 ARCH=$(uname -m)
 case "$ARCH" in
-    arm64) ABIARCH=aarch64; CPU=aarch64; TARGET_TRIPLE=aarch64-unknown-freebsd ;;
-    amd64) ABIARCH=amd64; CPU=x86_64; TARGET_TRIPLE=x86_64-unknown-freebsd ;;
+    arm64) CPU=aarch64; TARGET_TRIPLE=aarch64-unknown-freebsd ;;
+    amd64) CPU=x86_64; TARGET_TRIPLE=x86_64-unknown-freebsd ;;
     *) die "unsupported architecture $ARCH" ;;
 esac
 BUILD_TRIPLE=$(cc -dumpmachine)
 export BUILD_TRIPLE
 JOBS=${JOBS:-$(sysctl -n hw.ncpu)}
-OSVERSION=$(uname -K)
-export ABI="FreeBSD:15:$ABIARCH" OSVERSION IGNORE_OSVERSION=yes ASSUME_ALWAYS_YES=yes
+. "$TOP/scripts/pkg-env.sh"
+stepbsd_pkg_target "$ARCH"
+stepbsd_pkg_bootstrap "$WORK"
 NEXTBSD_REPO=${NEXTBSD_REPO:-https://github.com/nextbsd/nextbsd-pkg/releases/download/continuous-$ARCH}
 mkdir -p "$WORK/repos" "$WORK/pkg-cache"
 cat > "$WORK/repos/NextBSD.conf" <<CONF
@@ -39,12 +40,14 @@ for RECIPE do
     rm -rf "$SYSROOT" "$STAGE"
     mkdir -p "$SYSROOT/private/etc" "$SYSROOT/private/var" "$SYSROOT/private/tmp" "$STAGE"
     for d in etc var tmp; do ln -s "private/$d" "$SYSROOT/$d"; done
-    pkg -r "$SYSROOT" -o REPOS_DIR="$WORK/repos" -o PKG_CACHEDIR="$WORK/pkg-cache" update -f
+    stepbsd_pkg -r "$SYSROOT" -R "$WORK/repos" -o PKG_CACHEDIR="$WORK/pkg-cache" update -f
     # shellcheck disable=SC2086
-    pkg -r "$SYSROOT" -o REPOS_DIR="$WORK/repos" -o PKG_CACHEDIR="$WORK/pkg-cache" install -y $reqs
-    if pkg -r "$SYSROOT" info -e NextBSD-xlibre; then die 'XLibre entered the build root'; fi
+    stepbsd_pkg -r "$SYSROOT" -R "$WORK/repos" -o PKG_CACHEDIR="$WORK/pkg-cache" install -y $reqs
+    printf '%s\n' "$ABI" > "$SYSROOT/.stepbsd-build-abi"
+    if stepbsd_pkg -r "$SYSROOT" info -e NextBSD-xlibre; then die 'XLibre entered the build root'; fi
     else
         [ -d "$STAGE" ] && [ -d "$SYSROOT/usr" ] || die "no build to resume for $RECIPE"
+        [ "$(cat "$SYSROOT/.stepbsd-build-abi" 2>/dev/null)" = "$ABI" ] || die 'old or different-architecture root: rebuild without REUSE_ROOT'
     fi
     # LLVM/FreeBSD build-host tools; the compiler and pkgconf can see only target headers/libs.
     export CC="/usr/bin/clang --target=$TARGET_TRIPLE --sysroot=$SYSROOT -fuse-ld=lld"
@@ -82,16 +85,17 @@ CROSS
     # Recipe names are checked against the allowlist above.
     # shellcheck source=/dev/null
     . "$TOP/packages/$RECIPE/build.sh"
-    python3 "$TOP/scripts/verify-stage.py" "$STAGE" "$SYSROOT" "$RECIPE"
+    STEPBSD_PKG_TOOL="$STEPBSD_PKG_TOOL" STEPBSD_PKG_CONFIG="$STEPBSD_PKG_CONFIG" \
+        python3 "$TOP/scripts/verify-stage.py" "$STAGE" "$SYSROOT" "$RECIPE"
     version=$(cat "$TOP/packages/$RECIPE/version")
     name=StepBSD-xorg
     [ "$RECIPE" != pkg ] || name=pkg
-    deps=$(for d in $reqs; do pkg -r "$SYSROOT" query '"%n": { origin: "%o", version: "%v" },' "$d"; done)
+    deps=$(for d in $reqs; do stepbsd_pkg -r "$SYSROOT" query '"%n": { origin: "%o", version: "%v" },' "$d"; done)
     mkdir -p "$STAGE/usr/share/stepbsd/packages/$RECIPE"
     install -m 0444 "$TOP/LICENSE" "$STAGE/usr/share/licenses/$RECIPE/StepBSD-pkg-LICENSE"
     install -m 0444 "$TOP/NOTICE.md" "$STAGE/usr/share/licenses/$RECIPE/StepBSD-pkg-NOTICE.md"
     cp "$TOP/packages/$RECIPE/sources.lock" "$STAGE/usr/share/stepbsd/packages/$RECIPE/"
-    pkg -r "$SYSROOT" query '%n %v' > "$STAGE/usr/share/stepbsd/packages/$RECIPE/build-dependencies.txt"
+    stepbsd_pkg -r "$SYSROOT" query '%n %v' > "$STAGE/usr/share/stepbsd/packages/$RECIPE/build-dependencies.txt"
     # VM sync can preserve the checkout's host UID. Trust only this explicit
     # checkout for this command; do not change Git's global safety settings.
     recipe_commit=$(git -c safe.directory="$TOP" -C "$TOP" rev-parse HEAD) ||
@@ -106,7 +110,6 @@ desc: "Built from checksum-pinned upstream sources with StepBSD's ordered patch 
 maintainer: "rtp@beeksiwaais.fr"
 www: "https://github.com/beeksiwaais/StepBSD-pkg"
 abi: "$ABI"
-arch: "freebsd:15:$ABIARCH"
 prefix: /
 annotations: { "org.stepbsd.origin": "StepBSD" }
 deps: {
@@ -116,11 +119,15 @@ MANIFEST
     (cd "$STAGE" && find . \( -type f -o -type l \) | sed 's|^\.||' | sort) > "$WORK/plist"
     [ "$RECIPE" != xorg ] || echo '@dir /var/db/xkb' >> "$WORK/plist"
     rm -f "$OUT/$name-$version.pkg" "$OUT/$name-$version.pkg.sig"
-    pkg create -M "$WORK/manifest" -p "$WORK/plist" -r "$STAGE" -o "$OUT"
+    stepbsd_pkg create -M "$WORK/manifest" -p "$WORK/plist" -r "$STAGE" -o "$OUT"
+    if [ "$RECIPE" = pkg ]; then
+        # Subsequent package operations use our policy-bearing implementation.
+        stepbsd_pkg_from_repository "$OUT" "$WORK"
+    fi
 done
 # A key is mandatory for publication, optional for an isolated local build.
 if [ -n "${REPO_SIGNING_KEY:-}" ]; then
     sh "$TOP/scripts/sign-repository.sh" "$OUT"
 else
-    pkg repo "$OUT"
+    stepbsd_pkg repo "$OUT"
 fi

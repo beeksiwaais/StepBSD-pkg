@@ -1,0 +1,21 @@
+Description: detect public libzstd for NextBSD's static libarchive
+ FreeBSD may provide libprivatezstd, while the NextBSD target sysroot exposes
+ libzstd. Keep the existing private-library preference and probe the public
+ library when necessary so pkg-static links the target archive dependency.
+Origin: StepBSD
+Last-Update: 2026-11-24
+---
+--- a/configure.def
++++ b/configure.def
+@@ -143,6 +143,11 @@
+ # privatezstd
+ define ZSTDLIB ""
+ cc_with "-libs -lprivatezstd" cc_check_functions ZSTD_versionNumber
+ if [ "$(get_define HAVE_ZSTD_VERSIONNUMBER)" = "1" ]; then
+ 	define ZSTDLIB "-lprivatezstd"
++else
++	cc_with "-libs -lzstd" cc_check_functions ZSTD_versionNumber
++	if [ "$(get_define HAVE_ZSTD_VERSIONNUMBER)" = "1" ]; then
++		define ZSTDLIB "-lzstd"
++	fi
+ fi

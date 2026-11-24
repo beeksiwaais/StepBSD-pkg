@@ -85,7 +85,8 @@ CROSS
     # Recipe names are checked against the allowlist above.
     # shellcheck source=/dev/null
     . "$TOP/packages/$RECIPE/build.sh"
-    python3 "$TOP/scripts/verify-stage.py" "$STAGE" "$SYSROOT" "$RECIPE"
+    STEPBSD_PKG_TOOL="$STEPBSD_PKG_TOOL" STEPBSD_PKG_CONFIG="$STEPBSD_PKG_CONFIG" \
+        python3 "$TOP/scripts/verify-stage.py" "$STAGE" "$SYSROOT" "$RECIPE"
     version=$(cat "$TOP/packages/$RECIPE/version")
     name=StepBSD-xorg
     [ "$RECIPE" != pkg ] || name=pkg

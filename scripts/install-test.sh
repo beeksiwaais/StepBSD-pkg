@@ -39,7 +39,9 @@ cat > "$REPOS/StepBSD.conf" <<CONF
 StepBSD: { url: "file://$OUT", $signature, priority: 100 }
 CONF
 stepbsd_pkg -r "$R" -R "$REPOS" update -f
-stepbsd_pkg -r "$R" -R "$REPOS" install -y -r StepBSD pkg
+# Our policy selects pkg only from StepBSD; dependencies still resolve from
+# both trusted repositories, including NextBSD-freebsd-compat.
+stepbsd_pkg -r "$R" -R "$REPOS" install -y pkg
 P=$R/usr/sbin/pkg-static
 "$P" -r "$R" -R "$REPOS" install -y StepBSD-xorg
 "$P" -r "$R" check -d -s -a

@@ -90,8 +90,9 @@ jobs:
             chmod 600 "$key"
             trap 'rm -f "$key"' EXIT INT TERM
             printf '%s\n' "$STEPBSD_REPO_SIGNING_KEY" > "$key"
+            export STEPBSD_PKG_HOST_REPO="$PWD/packages/source-packages-amd64"
             for arch in amd64 arm64; do
-              REPO_SIGNING_KEY="$key" sh scripts/sign-repository.sh "packages/source-packages-$arch"
+              REPO_SIGNING_KEY="$key" sh scripts/sign-repository.sh "packages/source-packages-$arch" "$arch"
               sh scripts/check-repository.sh "packages/source-packages-$arch" "$arch"
             done
       - name: Publish signed package snapshots

@@ -45,6 +45,23 @@ sh scripts/install-test.sh out
 ```
 
 The default builds both recipes. To build only one, append `pkg` or `xorg`.
+Build `pkg` before `xorg` for a fresh output repository. Target packages now
+carry `NextBSD:27:<arch>` and OSVERSION `2700000`, matching the NextBSD base.
+The FreeBSD 15.1 build VM and FreeBSD compiler triples are unchanged: package
+metadata and compiler/platform compatibility are separate concerns.
+
+The initial sysroot uses a build-host-only NextBSD `pkg-static` bootstrap.
+Once our pkg is built, package operations use StepBSD's policy-bearing static
+binary. The ABI patch is additive to our existing distribution-policy patch;
+NextBSD still cannot replace StepBSD's pkg, and X.Org remains StepBSD-owned.
+Old FreeBSD-ABI packages and resumed roots must be rebuilt in fresh output
+directories; the build rejects missing or different target-ABI markers.
+
+For cross-architecture signing or catalogue checks, set
+`STEPBSD_PKG_HOST_REPO` to the native host architecture's freshly built package
+directory and pass the target architecture to the signing/check scripts.
+No target-architecture binary is executed by a cross-image/release job.
+
 Downloads are checksum checked on every use, including cache hits. Target
 packages install into an isolated sysroot; the compiler uses that sysroot
 and pkgconf searches only its `.pc` directories. Verification rejects file

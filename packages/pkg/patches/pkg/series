@@ -6,3 +6,4 @@
 0003-MACHINE-config-variable.patch
 0004-foreign-packages-only-under-usr-local-and-var.patch
 0005-stepbsd-distribution-policy.patch
+0006-nextbsd-package-abi.patch
